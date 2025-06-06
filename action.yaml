@@ -107,6 +107,10 @@ inputs:
       kvm_automation_tooling/ checkout provided by the calling
       workflow.
     default: true
+  github-runner:
+    description: 'Configure if this is a self-hosted persistent runner'
+    default: true
+    type: boolean
 
 outputs:
   cluster-details:
@@ -124,10 +128,11 @@ runs:
       if: ${{ inputs.checkout == 'true' }}
       uses: actions/checkout@v4
       with:
-        repository: 'jpartlow/kvm_automation_tooling'
-        ref: 'v2'
+        repository: 'bastelfreak/kvm_automation_tooling'
+        ref: 'reference-architecture'
         path: 'kvm_automation_tooling'
     - name: Install Terraform
+      if: ${{ inputs.github-runner == true }}
       shell: bash
       run: |-
         # From https://developer.hashicorp.com/terraform/install
@@ -137,6 +142,7 @@ runs:
           sudo tee /etc/apt/sources.list.d/hashicorp.list
         sudo apt update && sudo apt install terraform
     - name: Install Libvirt
+      if: ${{ inputs.github-runner == true }}
       shell: bash
       run: |-
         sudo apt install libvirt-daemon-system libvirt-dev genisoimage
@@ -157,13 +163,22 @@ runs:
         ruby-version: ${{ inputs.ruby-version }}
         bundler-cache: true
         working-directory: kvm_automation_tooling
+        self-hosted: ${{ inputs.github-runner != true }}
+    - name: Display Ruby Environment
+      run: bundle env
+      working-directory: kvm_automation_tooling
+      shell: bash
     - name: Install module dependencies
       shell: bash
       working-directory: kvm_automation_tooling
       run: bundle exec bolt module install
+      env:
+        # Suppress warnings about Bolt gem versus package use.
+        BOLT_GEM: true
     - name: Generate an SSH key to use for the cluster
       shell: bash
       run: ssh-keygen -t ed25519 -f "${HOME}/.ssh/ssh-id-test" -N '' -q
+      if: ${{ inputs.github-runner == true }}
     - name: Write standup_cluster params
       shell: bash
       env:
@@ -216,10 +231,9 @@ runs:
     - name: Run standup_cluster plan
       shell: bash
       env:
-        STREAM: ${{ ((inputs.debug == 'true') && '--stream --no-verbose') || '' }}
+        STREAM: ${{ ((inputs.debug == 'true') && '--stream --verbose') || '' }}
       working-directory: kvm_automation_tooling
-      run: |-
-        bundle exec bolt plan run kvm_automation_tooling::standup_cluster --params @standup_cluster_params.json ${STREAM}
+      run: bundle exec bolt plan run kvm_automation_tooling::standup_cluster --params @standup_cluster_params.json ${STREAM}
     - name: Collect inventory details
       id: inventory-details
       shell: bash
@@ -227,3 +241,11 @@ runs:
       run: |-
         bundle exec bolt inventory show --inventory terraform/instances/inventory.test.yaml --format json --detail | tee inventory.json
         echo "inventory_json=$(cat inventory.json)" >> $GITHUB_OUTPUT
+    #- name: Teardown
+    #  if: always()
+    #  working-directory: kvm_automation_tooling
+    #  run: bundle exec bolt plan run kvm_automation_tooling::teardown_cluster cluster_id=test
+    #  shell: bash
+    #  env:
+    #    # Suppress warnings about Bolt gem versus package use.
+    #    BOLT_GEM: true
