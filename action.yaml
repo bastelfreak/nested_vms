@@ -146,8 +146,8 @@ runs:
       if: ${{ inputs.checkout == 'true' }}
       uses: actions/checkout@v5
       with:
-        repository: 'jpartlow/kvm_automation_tooling'
-        ref: 'v2'
+        repository: 'bastelfreak/kvm_automation_tooling'
+        ref: 'ubuntu26'
         path: 'kvm_automation_tooling'
     - name: Install Terraform
       shell: bash
